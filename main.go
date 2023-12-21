@@ -42,11 +42,16 @@ func getUpdates() string {
   }
   body , _ := io.ReadAll(res.Body)
   body_s := string(body)
+
+  fmt.Println(body_s)
+  
   message_id , bumpy :=FindinString(body_s , "\"message_id\":")
   if(bumpy == -1){
     return "DB is empty !"
   }
   update_id , _:=FindinString(body_s , "\"update_id\":")
+
+ // fmt.Println(message_id, update_id)
 
   message_id[0] = message_id[1]
 
@@ -67,9 +72,17 @@ func getUpdates() string {
      update_id[0]++
   }
   upd_id , _ := strconv.Atoi(body_s[update_id[1]:update_id[0]])
+
+  fmt.Println(mes_id , upd_id)
   
     res , _ =http.Get(fmt.Sprintf("%sgetUpdates?offset=%d&limit=1" , bot1 , upd_id))
-    http.Get(fmt.Sprintf("%sdeleteMessage?chat_id=%s&message_id=%d" , bot1 , Chat_ID , mes_id))
+
+  upd_id++
+  http.Get(fmt.Sprintf("%sgetUpdates?offset=%d&limit=1" , bot1 , upd_id))
+    http.Get(fmt.Sprintf("%sdeleteMessage?chat_id=%s&message_id=%d" , bot2 , Chat_ID , mes_id))
+
+  //body , _ = io.ReadAll(res.Body)
+  //fmt.Println(string(body) , err)
     
     body , _ = io.ReadAll(res.Body)
     body_s = string(body)
@@ -84,14 +97,17 @@ func getUpdates() string {
     }
     value[0] = value[0] - 4
     data := body_s[value[1]:value[0]]
+
+   // fmt.Println(data)
   http.Get(fmt.Sprintf("%ssendMessage?chat_id=%s&text=%s" , bot2 , Chat_ID , data))
   return data
 }
 
 func timer(){
   for{
-    time.Sleep(time.Second)
+    time.Sleep(time.Second*3)
     t_time++
+    getUpdates()
   }
 }
 
@@ -184,7 +200,7 @@ func startingDB(){
 
   fmt.Println("you can interact with server in a tcp connection\n1. for sending data to DB use this syntax : s/<your data>\n for getting data from DB use this syntax : g/<object>/ or if you want all of data you have ever sent to DB: ga/\n\n")
   fmt.Println("for making everything safe always encode data and also for being able to use getting by object always give special objects to them or id")
-   
+  go timer()
   for {
     conn, err := db_serv.Accept()
     if err != nil {
@@ -196,7 +212,6 @@ func startingDB(){
 }
 
 func main() {
-  go timer()
   bale := "https://tapi.bale.ai/"
    telegram:="https://api.telegram.org/"
   
