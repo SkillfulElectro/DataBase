@@ -2,256 +2,263 @@ package main
 
 import (
 	"fmt"
-  "net/http"
-  "net"
-  "time"
-  "strconv"
-  "io" 
+	"io"
+	"net"
+	"net/http"
+	"strconv"
+	"time"
 )
 
-var bot1 string
-var bot2 string
+var Bots []string
 var Chat_ID string
 var data_count int = 0
-var t_time int = 0
+var t_time uint64 = 0
 
-func FindinString(data , text string) ([]int , int){
-  
-  i:=0
-  for ;i<len(data);i++ {
-    if(i+len(text) > len(data)){
-      return []int{-1},-1
-    }
-    to_check := (data)[0+i:len(text)+i]
-    if (to_check == text){
-      break
-    }  
-  }
+var send_queue []string
 
-  if(i+len(text) > len(data)){
-    return []int{-1},-1
-  }
-  
-  return []int{i, i+len(text)},0
+func Sender() {
+	for i := 1; ; {
+		if len(send_queue) > 0 {
+			//fmt.Println(send_queue)
+			res, _ := http.Get(fmt.Sprintf("%ssendMessage?chat_id=%s&text=%s", Bots[1], Chat_ID, send_queue[0]))
+			body, _ := io.ReadAll(res.Body)
+			fmt.Println(string(body))
+
+			send_queue = append(send_queue[1:])
+			if i%19 == 0 {
+				time.Sleep(time.Second * 40)
+			}
+			i++
+		}
+	}
+}
+
+func FindinString(data *string, text string) ([]int, int) {
+	i := 0
+	for ; i < len(*data); i++ {
+		if i+len(text) > len(*data) {
+			return []int{-1}, -1
+		}
+		to_check := (*data)[0+i : len(text)+i]
+		if to_check == text {
+			break
+		}
+	}
+
+	if i+len(text) > len(*data) {
+		return []int{-1}, -1
+	}
+
+	return []int{i, i + len(text)}, 0
 }
 
 func getUpdates() string {
-  res , err:=http.Get(fmt.Sprintf("%sgetUpdates?offset=%d&limit=1" , bot1 , 1))
-  if err != nil {
-    return fmt.Sprintf("Failed to get data : %s" , err)
-  }
-  body , _ := io.ReadAll(res.Body)
-  body_s := string(body)
+	res, err := http.Get(fmt.Sprintf("%sgetUpdates?offset=%d&limit=1", Bots[0], 1))
+	if err != nil {
+		return fmt.Sprintf("Failed to get data : %s", err)
+	}
+	body, _ := io.ReadAll(res.Body)
+	body_s := string(body)
+	message_id, bumpy := FindinString(&body_s, "\"message_id\":")
+	if bumpy == -1 {
+		return "DB is empty !"
+	}
+	update_id, _ := FindinString(&body_s, "\"update_id\":")
 
-  fmt.Println(body_s)
-  
-  message_id , bumpy :=FindinString(body_s , "\"message_id\":")
-  if(bumpy == -1){
-    return "DB is empty !"
-  }
-  update_id , _:=FindinString(body_s , "\"update_id\":")
+	message_id[0] = message_id[1]
 
- // fmt.Println(message_id, update_id)
+	for {
+		if body_s[message_id[0]] == ',' {
+			break
+		}
+		message_id[0]++
+	}
 
-  message_id[0] = message_id[1]
+	mes_id, _ := strconv.Atoi(body_s[message_id[1]:message_id[0]])
 
-  for{
-     if(body_s[message_id[0]] == ',')      {
-       break
-     }
-     message_id[0]++
-  }
+	update_id[0] = update_id[1]
+	for {
+		if body_s[update_id[0]] == ',' {
+			break
+		}
+		update_id[0]++
+	}
+	upd_id, _ := strconv.Atoi(body_s[update_id[1]:update_id[0]])
 
-  mes_id , _ := strconv.Atoi(body_s[message_id[1]:message_id[0]])
-  
-  update_id[0] = update_id[1]
-  for{
-    if(body_s[update_id[0]] == ',')       {
-       break
-    }
-     update_id[0]++
-  }
-  upd_id , _ := strconv.Atoi(body_s[update_id[1]:update_id[0]])
+	res, _ = http.Get(fmt.Sprintf("%sgetUpdates?offset=%d&limit=1", Bots[0], upd_id))
+	upd_id++
+	http.Get(fmt.Sprintf("%sgetUpdates?offset=%d&limit=1", Bots[0], upd_id))
+	http.Get(fmt.Sprintf("%sdeleteMessage?chat_id=%s&message_id=%d", Bots[1], Chat_ID, mes_id))
 
-  fmt.Println(mes_id , upd_id)
-  
-    res , _ =http.Get(fmt.Sprintf("%sgetUpdates?offset=%d&limit=1" , bot1 , upd_id))
+	//body , _ = io.ReadAll(res.Body)
+	//fmt.Println(string(body) , err)
 
-  upd_id++
-  http.Get(fmt.Sprintf("%sgetUpdates?offset=%d&limit=1" , bot1 , upd_id))
-    http.Get(fmt.Sprintf("%sdeleteMessage?chat_id=%s&message_id=%d" , bot2 , Chat_ID , mes_id))
+	body, _ = io.ReadAll(res.Body)
+	body_s = string(body)
 
-  //body , _ = io.ReadAll(res.Body)
-  //fmt.Println(string(body) , err)
-    
-    body , _ = io.ReadAll(res.Body)
-    body_s = string(body)
-    
-    value , _:= FindinString(body_s , "\"text\":\"")
-    
-    value[0] = len(body_s) - 1
-    for ;;value[0]-- {
-      if (body_s[value[0]] == '}'){
-        break
-      }
-    }
-    value[0] = value[0] - 4
-    data := body_s[value[1]:value[0]]
+	value, _ := FindinString(&body_s, "\"text\":\"")
 
-   // fmt.Println(data)
-  http.Get(fmt.Sprintf("%ssendMessage?chat_id=%s&text=%s" , bot2 , Chat_ID , data))
-  return data
+	value[0] = len(body_s) - 1
+	for ; ; value[0]-- {
+		if body_s[value[0]] == '}' {
+			break
+		}
+	}
+	value[0] = value[0] - 4
+	data := body_s[value[1]:value[0]]
+
+	send_queue = append(send_queue, data)
+	// fmt.Println(data)
+	//http.Get(fmt.Sprintf("%ssendMessage?chat_id=%s&text=%s", Bots[1], Chat_ID, data))
+	return data
 }
 
-func timer(){
-  for{
-    time.Sleep(time.Second*3)
-    t_time++
-    getUpdates()
-  }
+func timer() {
+	for {
+		time.Sleep(time.Second * 3)
+		t_time++
+		getUpdates()
+	}
 }
 
-func getData_All(db_conn net.Conn){
-  num := data_count
-  for ;num>0;num--{
-    fmt.Fprintf(db_conn , getUpdates())
-    fmt.Fprintf(db_conn , "\n")
-  }
+func getData_All(db_conn net.Conn) {
+	num := data_count
+	for ; num > 0; num-- {
+		fmt.Fprintf(db_conn, getUpdates())
+		fmt.Fprintf(db_conn, "\n")
+	}
 }
 
-func getData_byObject(db_conn net.Conn , object string){
-  num := data_count
-  for ;num>0;num--{
-    data := getUpdates()
-    _ , err := FindinString(data , object)
-    if err != -1{
-      fmt.Fprintf(db_conn, data)
-    }
-  }
+func getData_byObject(db_conn net.Conn, object string) {
+	num := data_count
+	for ; num > 0; num-- {
+		data := getUpdates()
+		_, err := FindinString(&data, object)
+		if err != -1 {
+			fmt.Fprintf(db_conn, data)
+		}
+	}
 }
 
-func chatID_set(response string){
+func chatID_set(response string) {
 
-  i:= 26
-  for ;response[i] != ',' ; i++{}
-  
+	i := 26
+	for ; response[i] != ','; i++ {
+	}
+
 	Chat_ID = response[26:i]
 }
 
-func handleRequest(db_conn net.Conn){
-  fmt.Fprintf(db_conn , "Connected")
-  res , err := io.ReadAll(db_conn)
+func handleRequest(db_conn net.Conn) {
+	fmt.Fprintf(db_conn, "Connected")
+	res, err := io.ReadAll(db_conn)
 
-  if err != nil{
-    fmt.Fprintf(db_conn , "Error")
-    fmt.Println("Error happened on reciving data :%s" , err)
-    return
-  }
+	if err != nil {
+		fmt.Fprintf(db_conn, "Error")
+		fmt.Println("Error happened on reciving data :%s", err)
+		return
+	}
 
-  data := string(res)
-  if data[0] == 's'{
-    _ , err = http.Get(fmt.Sprintf(bot2 + "/sendMessage?chat_id=%s&text=%s" , Chat_ID , data[1:] ))
-    if err != nil{
-      fmt.Fprintf(db_conn , "Failed to send data : %s" , err)
-    }else{
-      data_count++
-      fmt.Fprintf(db_conn , "Success")
-    }
-  } 
+	data := string(res)
+	if data[0] == 's' {
+		//_, err = http.Get(fmt.Sprintf(Bots[1]+"/sendMessage?chat_id=%s&text=%s", Chat_ID, data[1:]))
+		send_queue = append(send_queue, data[2:])
 
-  if (data[0] == 'g'){
-     switch (data[1]){
-        case 'a':
-        getData_All(db_conn)
-        case '/':
-        next := 1
-        for ;;next++{
-          if (data[next] == '/'){
-            break
-          }
-        }
-        getData_byObject(db_conn , data[1:next])
-    }
-  }
+		data_count++
+		fmt.Fprintf(db_conn, "Success")
+
+	}
+
+	if data[0] == 'g' {
+		switch data[1] {
+		case 'a':
+			getData_All(db_conn)
+		case '/':
+			next := 1
+			for ; ; next++ {
+				if data[next] == '/' {
+					break
+				}
+			}
+			getData_byObject(db_conn, data[1:next])
+		}
+	}
 }
 
-func startingDB(){
-  fmt.Println("Starting DB servers ...")
-  time.Sleep(time.Second*2)
-  fmt.Println("checking available ports ... pls wait for a while")
+func startingDB() {
+	fmt.Println("Starting DB servers ...")
+	time.Sleep(time.Second * 2)
+	fmt.Println("checking available ports ... pls wait for a while")
 
-  var db_serv net.Listener
-  var err error
-  for i := 1000;i<20000;i++ {
-    db_serv , err = net.Listen("tcp" , fmt.Sprintf("localhost:%d" , i))
+	var db_serv net.Listener
+	var err error
+	for i := 1000; i < 20000; i++ {
+		db_serv, err = net.Listen("tcp", fmt.Sprintf("localhost:%d", i))
 
-    if err != nil {
-      continue 
-    }else{
-      fmt.Println("DB started on port : " , i)
-      break
-    }
-  }
+		if err != nil {
+			continue
+		} else {
+			fmt.Println("DB started on port : ", i)
+			break
+		}
+	}
 
-  if err != nil {
-    fmt.Println("all ports on your device are filled so DB failed to start")
-    return
-  }
+	if err != nil {
+		fmt.Println("all ports on your device are filled so DB failed to start")
+		return
+	}
 
-  fmt.Println("you can interact with server in a tcp connection\n1. for sending data to DB use this syntax : s/<your data>\n for getting data from DB use this syntax : g/<object>/ or if you want all of data you have ever sent to DB: ga/\n\n")
-  fmt.Println("for making everything safe always encode data and also for being able to use getting by object always give special objects to them or id")
-  go timer()
-  for {
-    conn, err := db_serv.Accept()
-    if err != nil {
-      fmt.Println("Error:", err)
-      continue
-    }
-    go handleRequest(conn)
-  }
+	fmt.Println("you can interact with server in a tcp connection\n1. for sending data to DB use this syntax : s/<your data>\n for getting data from DB use this syntax : g/<object>/ or if you want all of data you have ever sent to DB: ga/\n\n")
+	fmt.Println("for making everything safe always encode data and also for being able to use getting by object always give special objects to them or id")
+	go timer()
+	for {
+		conn, err := db_serv.Accept()
+		if err != nil {
+			fmt.Println("Error:", err)
+			continue
+		}
+		go handleRequest(conn)
+	}
 }
 
 func main() {
-  bale := "https://tapi.bale.ai/"
-   telegram:="https://api.telegram.org/"
-  
-  fmt.Println("Hello welcome to world of ultimate storage databases\n so how does it work ?\n1. creating account in Telegram or Bale\n2. go to @BotFather and generate your bot tokens (we need two of them)\n3. create a channel to store data in it and add that bots there\n4. insert tokens of your bots and username of channel without @ here !\n let's begin our journey ;)\n")
+	bale := "https://tapi.bale.ai/"
+	telegram := "https://api.telegram.org/"
 
-  var platform string
-  fmt.Println(">>Bale or Telegram : (B Or T)")
-  fmt.Scanln(&platform)
+	fmt.Println("Hello welcome to world of ultimate storage databases\n so how does it work ?\n1. creating account in Telegram or Bale\n2. go to @BotFather and generate your bot tokens (we need two of them)\n3. create a channel to store data in it and add that bots there\n4. insert tokens of your bots and username of channel without @ here !\n let's begin our journey ;)\n")
 
-  
+	var platform string
+	fmt.Println(">>Bale or Telegram : (B Or T)")
+	fmt.Scanln(&platform)
 
-  fmt.Println("insert token of your first bot :\n")
-  fmt.Scanln(&bot1)
+	fmt.Println("insert token of your first bot :\n")
+	fmt.Scanln(&Bots[0])
 
-  fmt.Println("insert token of your second bot :\n")
-  fmt.Scanln(&bot2)
+	fmt.Println("insert token of your second bot :\n")
+	fmt.Scanln(&Bots[1])
 
-  
-  switch (platform){
-    case "B":
-      bot1 = bale + "bot" + bot1 + "/"
-      bot2 = bale + "bot" + bot2 + "/"
-    case "T":
-      bot1 = telegram + "bot" + bot1 + "/"
-      bot2 = telegram + "bot" + bot2 + "/"
-  }
+	switch platform {
+	case "B":
+		Bots[0] = bale + "bot" + Bots[0] + "/"
+		Bots[1] = bale + "bot" + Bots[1] + "/"
+	case "T":
+		Bots[0] = telegram + "bot" + Bots[0] + "/"
+		Bots[1] = telegram + "bot" + Bots[1] + "/"
+	}
 
-  var username string
-  fmt.Println("insert username of your channel :")
-  fmt.Scanln(&username)
-  
-  res , err := http.Get(fmt.Sprintf(bot1 + "getChat?chat_id=@%s" , username))
+	var username string
+	fmt.Println("insert username of your channel :")
+	fmt.Scanln(&username)
 
-  if err != nil{
-    fmt.Println("Error happened in getting channel information ! : %s" , err)
-    return
-  }
+	res, err := http.Get(fmt.Sprintf(Bots[0]+"getChat?chat_id=@%s", username))
 
-  body , _ := io.ReadAll(res.Body)
- chatID_set(string(body))
+	if err != nil {
+		fmt.Println("Error happened in getting channel information ! : %s", err)
+		return
+	}
 
-  startingDB()
+	body, _ := io.ReadAll(res.Body)
+	chatID_set(string(body))
+
+	startingDB()
 }
